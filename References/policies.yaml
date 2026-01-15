@@ -1,0 +1,55 @@
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: dapr-resiliency
+spec:
+  policies:
+    circuitBreakers:
+      DefaultAppCircuitBreakerPolicy:
+        maxRequests: 5000000000
+        timeout: 10s
+        trip: consecutiveFailures > 5000000000
+      pubsubCB:
+        interval: 15s
+        maxRequests: 5000000000
+        timeout: 45s
+        trip: consecutiveFailures > 5000000000
+    retries:
+      DaprBuiltInServiceRetries:
+        duration: 30s
+        maxRetries: 30
+        policy: constant
+      DefaultAppRetryPolicy:
+        matching:
+          httpStatusCodes: 408,423,429,500-599
+        maxInterval: 30s
+        maxRetries: 11
+        policy: constant
+      DefaultPubsubComponentInboundTimeoutPolicy:
+        maxInterval: 60s
+        maxRetries: 5000
+        policy: exponential
+      DefaultPubsubComponentOutboundRetryPolicy:
+        maxInterval: 60s
+        maxRetries: 5000
+        policy: exponential
+      retryAppCall:
+        duration: 30s
+        maxRetries: 10
+        policy: constant
+      retryPublish:
+        maxInterval: 60s
+        maxRetries: 5000
+        policy: exponential
+    timeouts:
+      DefaultAppTimeoutPolicy: 120s
+  targets:
+    components:
+      pubsub:
+        inbound:
+          circuitBreaker: pubsubCB
+          retry: retryAppCall
+          timeout: general
+        outbound:
+          circuitBreaker: pubsubCB
+          retry: retryPublish

@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <PublishAsContainer>true</PublishAsContainer>
+        <PublishProfile>DefaultContainer</PublishProfile>
+        <ContainerRepository>dapr-repro-redis-lost-message</ContainerRepository>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Dapr.AspNetCore" Version="1.16.1" />
+      <PackageReference Include="Dapr.Messaging" Version="1.16.1" />
+    </ItemGroup>
+
+</Project>

@@ -1,0 +1,215 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  containers:
+    - name: redis
+      image: redis:latest
+      ports:
+        - containerPort: 6379
+          protocol: TCP
+      resources:
+        requests:
+          memory: "256Mi"
+          cpu: "250m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dapr-repro-redis-lost-message
+  labels:
+    app: dapr-repro-redis-lost-message
+spec:
+  selector:
+    app: dapr-repro-redis-lost-message
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dapr-repro-redis-lost-message
+  labels:
+    app: dapr-repro-redis-lost-message
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dapr-repro-redis-lost-message
+  template:
+    metadata:
+      labels:
+        app: dapr-repro-redis-lost-message
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "dapr-repro-redis-lost-message"
+        dapr.io/app-port: "8080"
+    spec:
+      containers:
+        - name: dapr-repro-redis-lost-message
+          image: dapr-repro-redis-lost-message:latest
+          ports:
+            - containerPort: 8080
+
+---
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: dapr-resiliency
+spec:
+  policies:
+    circuitBreakers:
+      DefaultAppCircuitBreakerPolicy:
+        maxRequests: 5000000000
+        timeout: 10s
+        trip: consecutiveFailures > 5000000000
+      pubsubCB:
+        interval: 15s
+        maxRequests: 5000000000
+        timeout: 45s
+        trip: consecutiveFailures > 5000000000
+    retries:
+      DaprBuiltInServiceRetries:
+        duration: 30s
+        maxRetries: 30
+        policy: constant
+      DefaultAppRetryPolicy:
+        matching:
+          httpStatusCodes: 408,423,429,500-599
+        maxInterval: 30s
+        maxRetries: 11
+        policy: constant
+      DefaultPubsubComponentInboundTimeoutPolicy:
+        maxInterval: 60s
+        maxRetries: 5000
+        policy: exponential
+      DefaultPubsubComponentOutboundRetryPolicy:
+        maxInterval: 60s
+        maxRetries: 5000
+        policy: exponential
+      retryAppCall:
+        duration: 30s
+        maxRetries: 10
+        policy: constant
+      retryPublish:
+        maxInterval: 60s
+        maxRetries: 5000
+        policy: exponential
+    timeouts:
+      DefaultAppTimeoutPolicy: 120s
+  targets:
+    components:
+      pubsub:
+        inbound:
+          circuitBreaker: pubsubCB
+          retry: retryAppCall
+          timeout: general
+        outbound:
+          circuitBreaker: pubsubCB
+          retry: retryPublish
+
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: test
+spec:
+  type: pubsub.redis
+  version: v1
+  metadata:
+    - name: redisHost
+      value: redis:6379
+    - name: ttlInSeconds
+      value: 86400
+    - name: processingTimeout
+      value: "0"
+    - name: redeliverInterval
+      value: "0"
+    - name: redisDB
+      value: "0"
+    - name: enableTLS
+      value: "false"
+    - name: redisMaxRetries
+      value: "10"
+    - name: redisMinRetryInterval
+      value: 0.008s
+    - name: redisMaxRetryInterval
+      value: 0.512s
+    - name: dialTimeout
+      value: 10s
+    - name: writeTimeout
+      value: 10s
+    - name: failover
+      value: "false"
+#    - name: redisUsername
+#      secretKeyRef:
+#        key: redisUsername
+#        name: redis-secret
+#    - name: redisPassword
+#      secretKeyRef:
+#        key: redisPassword
+#        name: redis-secret
+
+#---
+#apiVersion: dapr.io/v1alpha1
+#kind: Component
+#metadata:
+#  name: pubsubnopol
+#spec:
+#  metadata:
+#    - name: redisHost
+#      value: redis-headless:6379
+#    - name: ttlInSeconds
+#      value: 86400
+#    - name: redisDB
+#      value: "0"
+#    - name: enableTLS
+#      value: "false"
+#    - name: redisMaxRetries
+#      value: "10"
+#    - name: redisMinRetryInterval
+#      value: 0.008s
+#    - name: redisMaxRetryInterval
+#      value: 0.512s
+#    - name: dialTimeout
+#      value: 10s
+#    - name: writeTimeout
+#      value: 10s
+#    - name: failover
+#      value: "false"
+##    - name: redisUsername
+##      secretKeyRef:
+##        key: redisUsername
+##        name: redis-secret
+##    - name: redisPassword
+##      secretKeyRef:
+##        key: redisPassword
+##        name: redis-secret
+#  type: pubsub.redis
+#  version: v1

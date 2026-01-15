@@ -1,0 +1,47 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+    meta.helm.sh/release-name: infra
+    meta.helm.sh/release-namespace: laas
+  creationTimestamp: "2026-01-14T08:34:49Z"
+  generation: 1
+  labels:
+    app.kubernetes.io/managed-by: Helm
+  name: pubsubnopol
+  namespace: laas
+  resourceVersion: "72509436"
+  uid: a83f1d0a-20eb-4029-b2bc-bb37e19404d6
+spec:
+  metadata:
+  - name: ttlInSeconds
+    value: 86400
+  - name: redisDB
+    value: "0"
+  - name: enableTLS
+    value: "false"
+  - name: redisMaxRetries
+    value: "10"
+  - name: redisMinRetryInterval
+    value: 0.008s
+  - name: redisMaxRetryInterval
+    value: 0.512s
+  - name: dialTimeout
+    value: 10s
+  - name: writeTimeout
+    value: 10s
+  - name: redisHost
+    value: redis-headless:6379
+  - name: failover
+    value: "false"
+  - name: redisUsername
+    secretKeyRef:
+      key: redisUsername
+      name: redis-secret
+  - name: redisPassword
+    secretKeyRef:
+      key: redisPassword
+      name: redis-secret
+  type: pubsub.redis
+  version: v1
