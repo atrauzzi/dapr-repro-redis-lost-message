@@ -30,6 +30,7 @@ public class ConsumerService(DaprClient daprClient, DaprPublishSubscribeClient p
             PubSub, 
             Topic,
             new(new(TimeSpan.FromSeconds(10), TopicResponseAction.Retry)),
+            // note: This is the lambda that handles messages.
             async (message, _) => {
                 
                 await Task.CompletedTask;
@@ -41,7 +42,8 @@ public class ConsumerService(DaprClient daprClient, DaprPublishSubscribeClient p
                 await Task.Delay(TimeSpan.FromSeconds(20), cancellationToken);
                 
                 Console.WriteLine($"Marking {decoded} as processed.");
-                
+
+                // return TopicResponseAction.Retry;
                 return TopicResponseAction.Success;
             },
             cancellationToken
