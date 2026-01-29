@@ -1,4 +1,3 @@
-using Consumer;
 using Dapr.Client;
 using Dapr.Messaging.PublishSubscribe.Extensions;
 using Microsoft.AspNetCore.Builder;
@@ -9,7 +8,6 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHealthChecks();
 builder.Services.AddDaprClient();
 builder.Services.AddDaprPubSubClient();
-builder.Services.AddHostedService<ConsumerService>();
 
 var app = builder.Build();
 
@@ -19,4 +17,11 @@ var daprClient = app.Services.GetRequiredService<DaprClient>();
 
 await daprClient.WaitForSidecarAsync();
 
+for (int i = 1; i <= 1; i++)
+{
+    await daprClient.PublishEventAsync("test", "test", $"Event-{i}");
+}
+
 await app.RunAsync();
+
+

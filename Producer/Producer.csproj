@@ -5,7 +5,7 @@
         <Nullable>enable</Nullable>
         <PublishAsContainer>true</PublishAsContainer>
         <PublishProfile>DefaultContainer</PublishProfile>
-        <ContainerRepository>dapr-repro-redis-lost-message-consumer</ContainerRepository>
+        <ContainerRepository>dapr-repro-redis-lost-message-producer</ContainerRepository>
     </PropertyGroup>
 
     <ItemGroup>

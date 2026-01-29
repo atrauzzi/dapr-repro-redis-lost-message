@@ -1,0 +1,187 @@
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  serviceName: redis
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:latest
+          command:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --appendfsync
+            - everysec
+          ports:
+            - containerPort: 6379
+              protocol: TCP
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - protocol: TCP
+      port: 6379
+      targetPort: 6379
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dapr-repro-redis-lost-message
+  labels:
+    app: dapr-repro-redis-lost-message
+spec:
+  selector:
+    app: dapr-repro-redis-lost-message
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dapr-repro-redis-lost-message-consumer
+  labels:
+    app: dapr-repro-redis-lost-message-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dapr-repro-redis-lost-message-consumer
+  template:
+    metadata:
+      labels:
+        app: dapr-repro-redis-lost-message-consumer
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "dapr-repro-redis-lost-message-consumer"
+        dapr.io/app-port: "8080"
+        dapr.io/log-level: "debug"
+    spec:
+      containers:
+        - name: dapr-repro-redis-lost-message-consumer
+          image: dapr-repro-redis-lost-message-consumer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dapr-repro-redis-lost-message-producer
+  labels:
+    app: dapr-repro-redis-lost-message-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dapr-repro-redis-lost-message-producer
+  template:
+    metadata:
+      labels:
+        app: dapr-repro-redis-lost-message-producer
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "dapr-repro-redis-lost-message-producer"
+        dapr.io/app-port: "8080"
+        dapr.io/log-level: "debug"
+    spec:
+      containers:
+        - name: dapr-repro-redis-lost-message-producer
+          image: dapr-repro-redis-lost-message-producer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+
+---
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: dapr-resiliency
+scopes:
+  - dapr-repro-redis-lost-message-consumer
+spec:
+  policies:
+    retries:
+      retryAppCall:
+        duration: 1s # Potentially not being respected? Overridden by 60s.
+        maxRetries: 0 # Not being respected for sure.
+        policy: constant
+  targets:
+    components:
+      test:
+        inbound:
+          retry: retryAppCall
+
+
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: test
+spec:
+  metadata:
+    - name: redisHost
+      value: redis:6379
+    - name: redisDB
+      value: "0"
+    - name: enableTLS
+      value: "false"
+    - name: failover
+      value: "false"
+  #    - name: processingTimeout
+  #      value: "1s"
+  #    - name: redeliverInterval
+  #      value: "1s"
+  #    - name: redisMaxRetries
+  #      value: "10"
+  type: pubsub.redis
+  version: v1
+
+---

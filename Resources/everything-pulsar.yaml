@@ -1,0 +1,232 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pulsar
+  labels:
+    app: pulsar
+spec:
+  serviceName: pulsar
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: pulsar
+  template:
+    metadata:
+      labels:
+        app: pulsar
+    spec:
+      volumes:
+        - name: pulsar-config
+          configMap:
+            name: pulsar-config
+      containers:
+        - name: pulsar
+          image: apachepulsar/pulsar:latest
+          command: [ "bin/pulsar" ]
+          args: [ "standalone" ]
+          ports:
+            - containerPort: 6650
+              protocol: TCP
+              name: broker
+            - containerPort: 8080
+              protocol: TCP
+              name: http
+          volumeMounts:
+            - name: pulsar-data
+              mountPath: /pulsar/data
+            - name: pulsar-config
+              mountPath: /pulsar/conf/standalone.conf
+              subPath: standalone.conf
+  volumeClaimTemplates:
+    - metadata:
+        name: pulsar-data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pulsar-config
+data:
+  standalone.conf: |
+    clusterName=standalone
+    brokerServicePort=6650
+    webServicePort=8080
+    managedLedgerDefaultEnsembleSize=1
+    managedLedgerDefaultWriteQuorum=1
+    managedLedgerDefaultAckQuorum=1
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulsar
+  labels:
+    app: pulsar
+spec:
+  selector:
+    app: pulsar
+  ports:
+    - protocol: TCP
+      port: 6650
+      targetPort: 6650
+      name: broker
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      name: http
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dapr-repro-redis-lost-message
+  labels:
+    app: dapr-repro-redis-lost-message
+spec:
+  selector:
+    app: dapr-repro-redis-lost-message
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dapr-repro-redis-lost-message-consumer
+  labels:
+    app: dapr-repro-redis-lost-message-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dapr-repro-redis-lost-message-consumer
+  template:
+    metadata:
+      labels:
+        app: dapr-repro-redis-lost-message-consumer
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "dapr-repro-redis-lost-message-consumer"
+        dapr.io/app-port: "8080"
+        dapr.io/log-level: "debug"
+    spec:
+      containers:
+        - name: dapr-repro-redis-lost-message-consumer
+          image: dapr-repro-redis-lost-message-consumer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dapr-repro-redis-lost-message-producer
+  labels:
+    app: dapr-repro-redis-lost-message-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dapr-repro-redis-lost-message-producer
+  template:
+    metadata:
+      labels:
+        app: dapr-repro-redis-lost-message-producer
+      annotations:
+        dapr.io/enabled: "true"
+        dapr.io/app-id: "dapr-repro-redis-lost-message-producer"
+        dapr.io/app-port: "8080"
+        dapr.io/log-level: "debug"
+    spec:
+      containers:
+        - name: dapr-repro-redis-lost-message-producer
+          image: dapr-repro-redis-lost-message-producer:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+
+---
+apiVersion: dapr.io/v1alpha1
+kind: Resiliency
+metadata:
+  name: dapr-resiliency
+scope:
+  - dapr-repro-redis-lost-message-consumer
+  - test
+spec:
+  policies:
+#    circuitBreakers:
+#      DefaultAppCircuitBreakerPolicy:
+#        maxRequests: 5000000000
+#        timeout: 10s
+#        trip: consecutiveFailures > 5000000000
+#      pubsubCB:
+#        interval: 15s
+#        maxRequests: 5000000000
+#        timeout: 45s
+#        trip: consecutiveFailures > 5000000000
+    retries:
+#      DaprBuiltInServiceRetries:
+#        duration: 30s
+#        maxRetries: 30
+#        policy: constant
+#      DefaultAppRetryPolicy:
+#        matching:
+#          httpStatusCodes: 408,423,429,500-599
+#        maxInterval: 30s
+#        maxRetries: 11
+#        policy: constant
+#      DefaultPubsubComponentInboundTimeoutPolicy:
+#        maxInterval: 60s
+#        maxRetries: 5000
+#        policy: exponential
+#      DefaultPubsubComponentOutboundRetryPolicy:
+#        maxInterval: 60s
+#        maxRetries: 5000
+#        policy: exponential
+      retryAppCall:
+        duration: 1s
+        maxRetries: 5
+        policy: constant
+#      retryPublish:
+#        maxInterval: 60s
+#        maxRetries: 5000
+#        policy: exponential
+#    timeouts:
+#      DefaultAppTimeoutPolicy: 120s
+  targets:
+    components:
+      test:
+        inbound:
+#          circuitBreaker: pubsubCB
+          retry: retryAppCall
+#          timeout: general
+#        outbound:
+#          circuitBreaker: pubsubCB
+#          retry: retryPublish
+
+---
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: test
+spec:
+  type: pubsub.pulsar
+  version: v1
+  metadata:
+    - name: host
+      value: pulsar://pulsar:6650
+
+---

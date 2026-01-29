@@ -29,22 +29,27 @@ public class ConsumerService(DaprClient daprClient, DaprPublishSubscribeClient p
         subscription = await pubsubClient.SubscribeAsync(
             PubSub, 
             Topic,
-            new(new(TimeSpan.FromSeconds(10), TopicResponseAction.Retry)),
+            // todo: Something to talk to Whit about as well, as it doesn't seem to be getting *enforced* outside of the lambda
+            new(new(TimeSpan.FromSeconds(10), TopicResponseAction.Retry))
+            {
+                
+            },
             // note: This is the lambda that handles messages.
             async (message, _) => {
-                
+
                 await Task.CompletedTask;
 
                 var decoded = Encoding.UTF8.GetString(message.Data.Span);
                 
-                Console.WriteLine($"Received: {decoded}, waiting");
+                Console.WriteLine($"Received message id {message.Id}: {decoded}, waiting");
                 
-                await Task.Delay(TimeSpan.FromSeconds(20), cancellationToken);
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
                 
-                Console.WriteLine($"Marking {decoded} as processed.");
+                Console.WriteLine($"Moving on from {decoded}.");
 
-                // return TopicResponseAction.Retry;
-                return TopicResponseAction.Success;
+                // throw new("Boo!");
+                return TopicResponseAction.Retry;
+                // return TopicResponseAction.Success;
             },
             cancellationToken
         );
@@ -59,7 +64,7 @@ public class ConsumerService(DaprClient daprClient, DaprPublishSubscribeClient p
         //     
         //     Console.WriteLine($"Published: {current}");
         //     
-        //     await Task.Delay(TimeSpan.FromSeconds(8), cancellationToken);
+        //     await Task.Delay(TimeSpan.FromSeconds(6), cancellationToken);
         //
         //     if (current == 10)
         //     {
